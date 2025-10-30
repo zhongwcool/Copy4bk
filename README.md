@@ -19,13 +19,27 @@
 
 ### 2. 配置设置
 
-编辑 `copy4bk.txt` 配置文件，设置源目录和目标目录：
+编辑 `copy4bk.txt` 配置文件，支持单个或多个目标目录：
 
 ```txt
-# 使用英文键名格式
+# 单个目标目录
 source=D:\work\RiderProjects\butter-knife-win\Publish
 target=D:\Resilio Sync\Resilio\QuantEdge\Apps\Windows
+
+# 或者多个目标目录（写多行 target）
+# target=D:\Backup1
+# target=D:\Backup2
+
+# 也支持 targets= 逗号/分号 分隔
+# targets=D:\Backup1,D:\Backup2;D:\Backup3
+
+# 简单格式：第一行源目录；后续每行一个目标目录
+# D:\work\RiderProjects\butter-knife-win\Publish
+# D:\Backup1
+# D:\Backup2
 ```
+
+程序结束时会显示“按任意键退出…”，便于直接双击运行后查看日志。
 
 ### 打包
 

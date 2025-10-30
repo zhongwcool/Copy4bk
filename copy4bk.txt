@@ -4,3 +4,4 @@
 # 使用英文键名格式
 source=D:\work\RiderProjects\butter-knife-win\Publish
 target=D:\Resilio Sync\Resilio\QuantEdge\Apps\Windows
+target=D:\FangcloudV2\personal_space\App\Windows
