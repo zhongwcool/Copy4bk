@@ -1,0 +1,6 @@
+# 复制最新版本文件配置文件
+# 配置源目录和目标目录路径
+
+# 使用英文键名格式
+source=D:\work\RiderProjects\butter-knife-win\Publish
+target=D:\Resilio Sync\Resilio\QuantEdge\Apps\Windows
