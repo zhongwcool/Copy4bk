@@ -76,11 +76,11 @@ source=D:\work\RiderProjects\butter-knife-win\Publish
 使用**pyinstaller**打包成exe文件，打开**PyCharm**的`Terminal`输入：
 
 ```shell
-pyinstaller --onefile --name Copy4bk --icon app.ico main.py
+pyinstaller --onefile --name Copy4bk-win --icon app.ico main.py
 ```
 
 如果需要在exe文件名中添加版本号、版权、公司等版本信息，可以使用`--version-file`参数，例如：
 
 ```shell
-pyinstaller --onefile --version-file version.txt --name Copy4bk --icon app.ico main.py
+pyinstaller --onefile --version-file version.txt --name Copy4bk-win --icon app.ico main.py
 ```

@@ -20,7 +20,7 @@ def print_intro():
     print("- 详细日志输出，便于排查")
     print("")
 
-def read_config(config_file='copy4bk.txt'):
+def read_config(config_file='copy4bk-win.txt'):
     """
     从配置文件中读取源目录和目标目录（支持多目标目录）
     支持格式：
@@ -437,11 +437,11 @@ if __name__ == '__main__':
     try:
         print_intro()
         # 从配置文件读取源目录和目标目录们
-        source_directory, target_directories = read_config('copy4bk.txt')
+        source_directory, target_directories = read_config('copy4bk-win.txt')
 
         if not source_directory or not target_directories:
             print("错误：无法从配置文件读取源目录或目标目录！")
-            print("\n请确保配置文件 copy4bk.txt 存在且格式正确。")
+            print("\n请确保配置文件 copy4bk-win.txt 存在且格式正确。")
         else:
             print("开始复制最新版本文件...")
             print(f"源目录: {source_directory}")
