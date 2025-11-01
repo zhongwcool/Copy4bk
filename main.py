@@ -26,59 +26,205 @@ def read_config(config_file='copy4bk.txt'):
     支持格式：
     1) 键值对：source=路径；target=路径（可写多行）；targets=路径1,路径2
     2) 简单格式：第一行是源目录；之后每一行都是一个目标目录
+    3) 注释行配置：支持 # target=路径 clean_old=true/false 格式
     """
     if not os.path.exists(config_file):
         print(f"配置文件不存在: {config_file}")
         return None, []
 
     source_dir = None
-    target_dirs = []
+    target_configs = []  # 改为存储(target_dir, config_dict)的列表
 
     try:
         with open(config_file, 'r', encoding='utf-8') as f:
             lines = f.readlines()
 
+        current_target = None
+        current_config = {}
+
         for raw_line in lines:
             line = raw_line.strip()
-            if not line or line.startswith('#'):
+            
+            # 跳过所有注释行（以 # 开头）
+            if line.startswith('#'):
+                # 处理注释行中的配置：支持 # target=路径 --clean_old true 格式
+                if 'target=' in line:
+                    # 从注释行解析配置，例如：# target=D:\Backup1 --clean_old true
+                    comment_content = line[1:].strip()  # 去掉#号
+                    # 查找 target= 的位置
+                    target_idx = comment_content.find('target=')
+                    if target_idx >= 0:
+                        # 提取 target= 后面的部分
+                        target_part = comment_content[target_idx + 6:].strip()  # 跳过 'target='
+                        # 查找 -- 的位置，区分路径和配置选项
+                        # 支持两种格式：' --clean_old' 或 '--clean_old'（前面可能有或没有空格）
+                        double_dash_idx = target_part.find('--')
+                        if double_dash_idx == -1:
+                            # 没有找到 --，整个就是路径（兼容旧格式）
+                            current_target = target_part.strip().strip('"').strip("'")
+                            current_config = {}
+                            # 检查是否有旧格式的配置（clean_old=true）
+                            parts = target_part.split()
+                            for part in parts[1:]:  # 跳过第一个（路径）
+                                if '=' in part and 'clean_old=' in part:
+                                    clean_old_val = part.split('=', 1)[1].strip().lower()
+                                    current_config['clean_old'] = clean_old_val == 'true'
+                                    # 从路径中移除配置部分
+                                    current_target = parts[0].strip().strip('"').strip("'")
+                        else:
+                            # 找到了 --，分割路径和配置选项
+                            # 从 -- 往前找，确定路径的结束位置（跳过空格）
+                            path_end = double_dash_idx
+                            while path_end > 0 and target_part[path_end - 1] == ' ':
+                                path_end -= 1
+                            current_target = target_part[:path_end].strip().strip('"').strip("'")
+                            current_config = {}
+                            options_str = target_part[double_dash_idx:].strip()  # 从 -- 开始
+                            # 解析配置选项
+                            parts = options_str.split()
+                            i = 0
+                            while i < len(parts):
+                                if parts[i].startswith('--'):
+                                    option_name = parts[i][2:].lower()
+                                    if i + 1 < len(parts):
+                                        option_value = parts[i + 1].lower()
+                                        if option_name == 'clean_old':
+                                            current_config['clean_old'] = option_value == 'true'
+                                        i += 2
+                                    else:
+                                        i += 1
+                                elif '=' in parts[i] and 'clean_old=' in parts[i]:
+                                    # 兼容旧格式
+                                    clean_old_val = parts[i].split('=', 1)[1].strip().lower()
+                                    current_config['clean_old'] = clean_old_val == 'true'
+                                    i += 1
+                                else:
+                                    i += 1
+                        
+                        if current_target:
+                            # 查找是否已有该target的配置
+                            found = False
+                            for idx, (td, cfg) in enumerate(target_configs):
+                                if td == current_target:
+                                    # 更新现有配置
+                                    target_configs[idx] = (current_target, {**cfg, **current_config})
+                                    found = True
+                                    break
+                            if not found:
+                                target_configs.append((current_target, current_config.copy()))
+                        current_target = None
+                        current_config = {}
+                # 所有注释行（无论是否包含target=）都跳过，不继续处理
                 continue
-
+            
+            if not line:
+                continue
+            
             if '=' in line:
                 key, value = line.split('=', 1)
                 key = key.strip().lower()
-                value = value.strip().strip('"').strip("'")
-
+                
                 if key in ['源目录', 'source', '源路径', 'a目录', 'a']:
-                    source_dir = value
+                    # 源目录直接取value，去掉引号
+                    source_dir = value.strip().strip('"').strip("'")
                 elif key in ['目标目录', 'target', '目标路径', 'b目录', 'b']:
-                    # 单个目标目录（可多行重复出现）
-                    if value:
-                        target_dirs.append(value)
+                    # 处理 target=路径 --clean_old true 格式
+                    # 使用 -- 前缀来区分配置选项，避免路径包含空格时的混淆
+                    value = value.strip()
+                    target_path = None
+                    target_config = {}
+                    
+                    # 查找 -- 的位置，-- 之前的都是路径，之后的是配置选项
+                    # 支持两种格式：' --clean_old' 或 '--clean_old'（前面可能有或没有空格）
+                    double_dash_idx = value.find('--')
+                    if double_dash_idx == -1:
+                        # 没有找到 --，整个value就是路径
+                        target_path = value.strip().strip('"').strip("'")
+                    else:
+                        # 找到了 --，分割路径和配置选项
+                        # 从 -- 往前找，确定路径的结束位置（跳过空格）
+                        path_end = double_dash_idx
+                        while path_end > 0 and value[path_end - 1] == ' ':
+                            path_end -= 1
+                        target_path = value[:path_end].strip().strip('"').strip("'")
+                        options_str = value[double_dash_idx:].strip()  # 从 -- 开始
+                        
+                        # 解析配置选项，格式：--clean_old true 或 --clean_old false
+                        # 也兼容旧格式 clean_old=true（向后兼容）
+                        parts = options_str.split()
+                        i = 0
+                        while i < len(parts):
+                            if parts[i].startswith('--'):
+                                # 新格式：--clean_old true
+                                option_name = parts[i][2:].lower()  # 去掉 --
+                                if i + 1 < len(parts):
+                                    option_value = parts[i + 1].lower()
+                                    if option_name == 'clean_old':
+                                        target_config['clean_old'] = option_value == 'true'
+                                    i += 2
+                                else:
+                                    i += 1
+                            elif '=' in parts[i]:
+                                # 旧格式：clean_old=true（向后兼容）
+                                option_pair = parts[i].split('=', 1)
+                                option_name = option_pair[0].strip().lower()
+                                option_value = option_pair[1].strip().lower()
+                                if option_name == 'clean_old':
+                                    target_config['clean_old'] = option_value == 'true'
+                                i += 1
+                            else:
+                                i += 1
+                    
+                    if target_path:
+                        # 检查是否已有该target的配置
+                        found = False
+                        for idx, (td, cfg) in enumerate(target_configs):
+                            if td == target_path:
+                                # 合并配置
+                                target_configs[idx] = (target_path, {**cfg, **target_config})
+                                found = True
+                                break
+                        if not found:
+                            target_configs.append((target_path, target_config))
                 elif key in ['目标目录们', '目标列表', 'targets']:
                     # 多个目标目录，逗号/分号分隔
                     parts = [p.strip() for p in value.replace('；', ';').replace('，', ',').replace(';', ',').split(',')]
-                    target_dirs.extend([p for p in parts if p])
+                    for p in parts:
+                        if p:
+                            found = False
+                            for idx, (td, cfg) in enumerate(target_configs):
+                                if td == p:
+                                    found = True
+                                    break
+                            if not found:
+                                target_configs.append((p, {}))
             else:
                 # 简单格式：第一行为源目录，其余每行为一个目标目录
                 if source_dir is None:
                     source_dir = line.strip().strip('"').strip("'")
                 else:
-                    target_dirs.append(line.strip().strip('"').strip("'"))
+                    target_val = line.strip().strip('"').strip("'")
+                    found = False
+                    for idx, (td, cfg) in enumerate(target_configs):
+                        if td == target_val:
+                            found = True
+                            break
+                    if not found:
+                        target_configs.append((target_val, {}))
 
     except Exception as e:
         print(f"读取配置文件失败: {str(e)}")
         return None, []
 
-    # 兼容旧格式：如果未提供目标列表但存在单个target（历史逻辑），保持兼容
     # 去重并保持顺序
-    dedup = []
+    dedup_configs = []
     seen = set()
-    for td in target_dirs:
+    for td, cfg in target_configs:
         if td not in seen:
-            dedup.append(td)
+            dedup_configs.append((td, cfg))
             seen.add(td)
 
-    return source_dir, dedup
+    return source_dir, dedup_configs
 
 
 def get_latest_files_in_dir(source_dir):
@@ -111,10 +257,112 @@ def get_latest_files_in_dir(source_dir):
     return latest_files
 
 
-def copy_latest_files(source_dir, target_dir):
+def ask_replace_file(file_name):
+    """
+    交互式询问是否替换已存在的文件
+    回车或任意非Esc的键：替换
+    Esc：跳过
+    """
+    try:
+        print(f"  文件已存在: {file_name}，是否替换？(回车=替换, Esc=跳过): ", end='', flush=True)
+        if msvcrt is not None:
+            # Windows环境
+            key = msvcrt.getch()
+            # 处理Windows的字节输入
+            if isinstance(key, bytes):
+                char_code = ord(key) if len(key) == 1 else key[0]
+                if char_code == 27:  # Esc键
+                    print('Esc')
+                    return False  # 跳过
+                elif char_code == 13 or char_code == 10:  # 回车或换行
+                    print('回车')
+                    return True  # 替换
+                else:
+                    char = chr(char_code) if 32 <= char_code <= 126 else ''
+                    if char:
+                        print(char)
+                    return True  # 其他键都替换
+            else:
+                # 如果是整数（字符码）
+                if key == 27:  # Esc键
+                    print('Esc')
+                    return False  # 跳过
+                elif key == 13 or key == 10:  # 回车或换行
+                    print('回车')
+                    return True  # 替换
+                else:
+                    char = chr(key) if 32 <= key <= 126 else ''
+                    if char:
+                        print(char)
+                    return True  # 其他键都替换
+        else:
+            # 非Windows环境
+            import sys
+            import tty
+            import termios
+            
+            try:
+                # 保存终端设置
+                fd = sys.stdin.fileno()
+                old_settings = termios.tcgetattr(fd)
+                tty.setraw(sys.stdin.fileno())
+                ch = sys.stdin.read(1)
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+                
+                if ord(ch) == 27:  # Esc键
+                    print('Esc')
+                    return False  # 跳过
+                elif ord(ch) == 13 or ord(ch) == 10:  # 回车或换行
+                    print('回车')
+                    return True  # 替换
+                else:
+                    print(ch)
+                    return True  # 其他键都替换
+            except Exception:
+                # 如果无法使用raw模式，回退到input
+                user_input = input().strip()
+                if user_input.lower() == 'esc' or user_input == '\x1b':  # Esc的字符串表示
+                    return False  # 跳过
+                else:
+                    return True  # 替换
+    except Exception as e:
+        print(f"\n输入处理错误: {e}，默认替换")
+        return True
+
+
+def clean_old_files(target_subdir, latest_file_names):
+    """
+    清理目标子目录中的旧文件，只保留最新的文件
+    latest_file_names: 最新文件的文件名列表
+    """
+    if not target_subdir.exists() or not target_subdir.is_dir():
+        return
+    
+    deleted_count = 0
+    for file_path in target_subdir.iterdir():
+        if file_path.is_file():
+            file_name = file_path.name
+            # 如果该文件不在最新文件列表中，删除它
+            if file_name not in latest_file_names:
+                try:
+                    file_path.unlink()
+                    deleted_count += 1
+                    print(f"  已删除旧文件: {file_name}")
+                except Exception as e:
+                    print(f"  删除旧文件失败 {file_name}: {str(e)}")
+    
+    if deleted_count > 0:
+        print(f"  共删除 {deleted_count} 个旧文件")
+
+
+def copy_latest_files(source_dir, target_dir, config=None):
     """
     将源目录下每个子目录中的最新版本文件复制到目标目录的对应子目录中
+    config: 目标目录的配置字典，包含 clean_old 等选项
     """
+    if config is None:
+        config = {}
+    
     source_path = Path(source_dir)
     target_path = Path(target_dir)
     
@@ -124,6 +372,8 @@ def copy_latest_files(source_dir, target_dir):
     
     # 创建目标目录（如果不存在）
     target_path.mkdir(parents=True, exist_ok=True)
+    
+    clean_old = config.get('clean_old', False)  # 默认不清理旧文件
     
     # 遍历源目录下的每个子目录
     for subdir in source_path.iterdir():
@@ -142,15 +392,32 @@ def copy_latest_files(source_dir, target_dir):
             target_subdir = target_path / subdir_name
             target_subdir.mkdir(parents=True, exist_ok=True)
             
+            # 获取最新文件的文件名列表（用于清理旧文件）
+            latest_file_names = [os.path.basename(f) for f in latest_files]
+            
+            # 如果启用了清理旧文件功能，先清理旧文件
+            if clean_old:
+                clean_old_files(target_subdir, latest_file_names)
+            
             # 复制最新文件到目标子目录
             for file_path in latest_files:
                 file_name = os.path.basename(file_path)
                 target_file = target_subdir / file_name
                 
+                # 检查目标文件是否已存在
+                file_exists = target_file.exists()
+                
+                if file_exists:
+                    # 询问是否替换
+                    if not ask_replace_file(file_name):
+                        print(f"  已跳过: {file_name}")
+                        continue
+                
                 try:
                     shutil.copy2(file_path, target_file)
                     mod_time = datetime.fromtimestamp(os.path.getmtime(file_path))
-                    print(f"  已复制: {file_name} (修改时间: {mod_time.strftime('%Y-%m-%d %H:%M:%S')})")
+                    action = "已替换" if file_exists else "已复制"
+                    print(f"  {action}: {file_name} (修改时间: {mod_time.strftime('%Y-%m-%d %H:%M:%S')})")
                 except Exception as e:
                     print(f"  复制失败 {file_name}: {str(e)}")
 
@@ -178,13 +445,17 @@ if __name__ == '__main__':
         else:
             print("开始复制最新版本文件...")
             print(f"源目录: {source_directory}")
-            print("目标目录:")
-            for idx, td in enumerate(target_directories, 1):
-                print(f"  {idx}. {td}")
+            print("目标目录配置:")
+            for idx, (td, cfg) in enumerate(target_directories, 1):
+                clean_old_status = "启用" if cfg.get('clean_old', False) else "禁用"
+                print(f"  {idx}. {td} (清理旧文件: {clean_old_status})")
 
-            for td in target_directories:
+            for td, cfg in target_directories:
                 print(f"\n=> 正在处理目标目录: {td}")
-                copy_latest_files(source_directory, td)
+                clean_old_status = "启用" if cfg.get('clean_old', False) else "禁用"
+                if clean_old_status == "启用":
+                    print(f"  清理旧文件功能: {clean_old_status}")
+                copy_latest_files(source_directory, td, cfg)
 
             print("\n全部目标目录处理完成！")
     finally:
