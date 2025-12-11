@@ -1,5 +1,6 @@
 import os
 import shutil
+import re
 from pathlib import Path
 from datetime import datetime
 try:
@@ -13,7 +14,7 @@ def print_intro():
     print(" Copy4bk - 自动复制最新版本文件工具")
     print("===============================")
     print("主要功能：")
-    print("- 自动识别每个子目录中最新修改的文件")
+    print("- 自动识别每个子目录中最新修改的文件（仅包含版本号的文件）")
     print("- 保持源目录的子目录结构")
     print("- 支持多目标目录一次性复制")
     print("- 复制保留文件时间戳")
@@ -227,9 +228,37 @@ def read_config(config_file='copy4bk-win.txt'):
     return source_dir, dedup_configs
 
 
+def has_version_number(filename):
+    """
+    检查文件名是否包含版本号
+    支持的版本号格式：
+    - 数字.数字.数字 (如: 2025.1.3, 1.2.3)
+    - 数字.数字 (如: 1.2)
+    - v数字.数字.数字 (如: v1.2.3)
+    - 下划线或连字符分隔 (如: Neptune_2025.1.3.exe, App-1.2.3.exe)
+    """
+    # 移除文件扩展名，只检查文件名部分
+    name_without_ext = os.path.splitext(filename)[0]
+    
+    # 版本号模式：匹配数字.数字.数字 或 数字.数字
+    # 支持前面有下划线、连字符或v前缀
+    version_patterns = [
+        r'\d+\.\d+\.\d+',  # 三段式：2025.1.3, 1.2.3
+        r'\d+\.\d+',        # 两段式：1.2
+        r'v\d+\.\d+\.\d+',  # 带v前缀：v1.2.3
+        r'v\d+\.\d+',       # 带v前缀两段：v1.2
+    ]
+    
+    for pattern in version_patterns:
+        if re.search(pattern, name_without_ext):
+            return True
+    
+    return False
+
+
 def get_latest_files_in_dir(source_dir):
     """
-    获取目录中最新版本的文件
+    获取目录中最新版本的文件（只包含有版本号的文件）
     返回修改时间最新的文件列表
     """
     files = []
@@ -239,7 +268,9 @@ def get_latest_files_in_dir(source_dir):
     for item in os.listdir(source_dir):
         item_path = os.path.join(source_dir, item)
         if os.path.isfile(item_path):
-            files.append(item_path)
+            # 只选择包含版本号的文件
+            if has_version_number(item):
+                files.append(item_path)
     
     if not files:
         return []
@@ -385,7 +416,7 @@ def copy_latest_files(source_dir, target_dir, config=None):
             latest_files = get_latest_files_in_dir(str(subdir))
             
             if not latest_files:
-                print(f"  子目录 {subdir_name} 中没有找到文件")
+                print(f"  子目录 {subdir_name} 中没有找到包含版本号的文件")
                 continue
             
             # 创建目标子目录
